@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>AuthenticationController.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">app</a> &gt; <a href="index.source.html" class="el_package">org.scrollSystem.controller</a> &gt; <span class="el_source">AuthenticationController.java</span></div><h1>AuthenticationController.java</h1><pre class="source lang-java linenums">package org.scrollSystem.controller;
+
+
+import jakarta.validation.Valid;
+import org.scrollSystem.request.AuthenticationRequest;
+import org.scrollSystem.request.RegisterRequest;
+import org.scrollSystem.response.AuthenticationResponse;
+import org.scrollSystem.response.DefaultResponse;
+import org.scrollSystem.response.UserResponse;
+import org.scrollSystem.service.UserAuthenticationService;
+import lombok.RequiredArgsConstructor;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
+
+@RestController
+@RequestMapping(&quot;/api/v1/auth&quot;)
+@RequiredArgsConstructor
+public class AuthenticationController {
+    private final UserAuthenticationService userAuthenticationService;
+
+
+    // API for registering an account
+    @PostMapping(&quot;/register&quot;)
+    public ResponseEntity&lt;DefaultResponse&lt;UserResponse&gt;&gt; register(
+            @RequestBody @Valid RegisterRequest request
+    ) {
+        try {
+<span class="nc" id="L28">            UserResponse userResponse = userAuthenticationService.register(request);</span>
+<span class="nc" id="L29">            return DefaultResponse.success(userResponse);</span>
+        }
+<span class="nc" id="L31">        catch (Exception e) {</span>
+<span class="nc" id="L32">            return DefaultResponse.error(e.getMessage());</span>
+        }
+    }
+
+    // API for login account
+    @PostMapping(&quot;/login&quot;)
+    public ResponseEntity&lt;DefaultResponse&lt;AuthenticationResponse&gt;&gt; login(
+            @RequestBody AuthenticationRequest request
+    ) {
+        try {
+<span class="nc" id="L42">            AuthenticationResponse response = userAuthenticationService.login(request);</span>
+<span class="nc" id="L43">            return DefaultResponse.success(response);</span>
+        }
+<span class="nc" id="L45">        catch (Exception e) {</span>
+<span class="nc" id="L46">            return DefaultResponse.error(e.getMessage());</span>
+        }
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.8.202204050719</span></div></body></html>

@@ -1,0 +1,328 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ScrollService.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">app</a> &gt; <a href="index.source.html" class="el_package">org.scrollSystem.service</a> &gt; <span class="el_source">ScrollService.java</span></div><h1>ScrollService.java</h1><pre class="source lang-java linenums">package org.scrollSystem.service;
+
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import jakarta.transaction.Transactional;
+import lombok.AllArgsConstructor;
+import lombok.Getter;
+import lombok.RequiredArgsConstructor;
+import org.scrollSystem.exception.ValidationException;
+import org.scrollSystem.models.FileStorage;
+import org.scrollSystem.models.Setting;
+import org.scrollSystem.models.User;
+import org.scrollSystem.repository.FileStorageRepository;
+import org.scrollSystem.repository.SettingRepo;
+import org.scrollSystem.repository.UserRepository;
+import org.scrollSystem.request.FileRequest;
+import org.scrollSystem.request.Timer;
+import org.scrollSystem.response.FileResponse;
+import org.scrollSystem.response.UserResponse;
+import org.scrollSystem.utility.LogMessageFormatter;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.stereotype.Service;
+import org.springframework.web.multipart.MultipartFile;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.io.BufferedReader;
+import java.io.FileReader;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.sql.Timestamp;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
+import java.util.*;
+import java.util.logging.FileHandler;
+import java.util.logging.Level;
+import java.util.stream.Collectors;
+
+@Service
+@RequiredArgsConstructor
+@Getter
+public class ScrollService {
+    private final FileStorageRepository fileRepository;
+    private final S3Service s3Service;
+    private final UserService userService;
+    private final UserRepository userRepository;
+    private final SettingRepo settingRepo;
+
+<span class="nc" id="L54">    private static final Logger actionLogger = LoggerFactory.getLogger(&quot;com.example.specific&quot;);</span>
+
+    @Value(&quot;${logging.file.specific}&quot;)
+    private String logFilePath;
+
+    @Transactional
+    public FileResponse uploadFile(MultipartFile file, String title) throws IOException {
+<span class="nc" id="L61">        Optional&lt;FileStorage&gt; optionalFileStorage = fileRepository.getFileStorageByTitle(title);</span>
+
+<span class="nc bnc" id="L63" title="All 2 branches missed.">        if (optionalFileStorage.isPresent()) {</span>
+<span class="nc" id="L64">            throw new ValidationException(&quot;File title is exists&quot;);</span>
+        }
+
+<span class="nc" id="L67">        String filePath = s3Service.uploadFile(file);</span>
+
+<span class="nc" id="L69">        User owner = (User) SecurityContextHolder.getContext().getAuthentication().getPrincipal();</span>
+<span class="nc" id="L70">        Integer timer = settingRepo.findAll().get(0).getTimer();</span>
+<span class="nc" id="L71">        FileStorage fileStorage = FileStorage.builder()</span>
+<span class="nc" id="L72">                .title(title)</span>
+<span class="nc" id="L73">                .filePath(filePath)</span>
+<span class="nc" id="L74">                .fileSize(file.getSize())</span>
+<span class="nc" id="L75">                .fileType(file.getContentType())</span>
+<span class="nc" id="L76">                .owner(owner)</span>
+<span class="nc" id="L77">                .timer(timer)</span>
+<span class="nc" id="L78">                .build();</span>
+<span class="nc" id="L79">        fileRepository.save(fileStorage);</span>
+
+<span class="nc" id="L81">        owner.setUploadNumber(owner.getUploadNumber() + 1);</span>
+<span class="nc" id="L82">        String message = &quot; uploaded file titled: &quot; + title;</span>
+<span class="nc" id="L83">        logAction(owner.getUsername(), message);</span>
+
+<span class="nc" id="L85">        userRepository.save(owner);</span>
+
+<span class="nc" id="L87">        FileResponse response = makeFileResponse(fileStorage);</span>
+
+<span class="nc" id="L89">        UserResponse ownerResponse = userService.getUserResponse(owner);</span>
+<span class="nc" id="L90">        response.setOwner(ownerResponse);</span>
+
+<span class="nc" id="L92">        return response;</span>
+    }
+
+    private FileResponse makeFileResponse(FileStorage fileStorage) {
+<span class="nc" id="L96">        return FileResponse.builder()</span>
+<span class="nc" id="L97">                .fileId(fileStorage.getFileId())</span>
+<span class="nc" id="L98">                .title(fileStorage.getTitle())</span>
+<span class="nc" id="L99">                .filePath(fileStorage.getFilePath())</span>
+<span class="nc" id="L100">                .fileSize(fileStorage.getFileSize())</span>
+<span class="nc" id="L101">                .fileType(fileStorage.getFileType())</span>
+<span class="nc" id="L102">                .uploadDate(fileStorage.getUploadDate())</span>
+<span class="nc" id="L103">                .downloadAmount(fileStorage.getDownloadAmount())</span>
+<span class="nc" id="L104">                .timer(fileStorage.getTimer())</span>
+<span class="nc" id="L105">                .build();</span>
+    }
+
+    private void logAction(String username, String message) throws IOException {
+        // Ensure the log file directory exists
+<span class="nc" id="L110">        Path logFilePathDir = Paths.get(logFilePath).getParent();</span>
+<span class="nc bnc" id="L111" title="All 4 branches missed.">        if (logFilePathDir != null &amp;&amp; Files.notExists(logFilePathDir)) {</span>
+<span class="nc" id="L112">            Files.createDirectories(logFilePathDir);</span>
+        }
+
+        // Create a logger for the specific action and set the file handler
+<span class="nc" id="L116">        java.util.logging.Logger fileLogger = java.util.logging.Logger.getLogger(&quot;ScrollLogger&quot;);</span>
+<span class="nc" id="L117">        FileHandler fileHandler = new FileHandler(logFilePath, true); // append mode = true</span>
+<span class="nc" id="L118">        fileHandler.setFormatter(new LogMessageFormatter()); // Use the custom formatter</span>
+
+        // Attach the file handler to the logger
+<span class="nc" id="L121">        fileLogger.addHandler(fileHandler);</span>
+<span class="nc" id="L122">        fileLogger.setLevel(Level.INFO);</span>
+<span class="nc" id="L123">        fileLogger.setUseParentHandlers(false); // Prevent it from logging to the console</span>
+
+        // Format the log message with title and date
+<span class="nc" id="L126">        String currentDateTime = LocalDateTime.now().format(DateTimeFormatter.ofPattern(&quot;yyyy-MM-dd HH:mm:ss&quot;));</span>
+<span class="nc" id="L127">        String logEntry = String.format(&quot;{\&quot;title\&quot;:\&quot;%s uploaded file titled: %s\&quot;, \&quot;date\&quot;:\&quot;%s\&quot;}&quot;, username, message, currentDateTime);</span>
+
+<span class="nc" id="L129">        fileLogger.info(logEntry);</span>
+
+<span class="nc" id="L131">        fileHandler.close();</span>
+<span class="nc" id="L132">    }</span>
+
+    public List&lt;Map&lt;String, Object&gt;&gt; getLogs() throws IOException {
+<span class="nc" id="L135">        List&lt;Map&lt;String, Object&gt;&gt; logEntries = new ArrayList&lt;&gt;();</span>
+<span class="nc" id="L136">        DateTimeFormatter formatter = DateTimeFormatter.ofPattern(&quot;yyyy-MM-dd HH:mm:ss&quot;);  // Define the expected date format</span>
+
+<span class="nc" id="L138">        try (BufferedReader reader = new BufferedReader(new FileReader(logFilePath))) {</span>
+            String line;
+<span class="nc" id="L140">            ObjectMapper mapper = new ObjectMapper();</span>
+
+<span class="nc bnc" id="L142" title="All 2 branches missed.">            while ((line = reader.readLine()) != null) {</span>
+                try {
+                    // Parse each line
+<span class="nc" id="L145">                    Map&lt;String, Object&gt; logEntry = mapper.readValue(line, new TypeReference&lt;Map&lt;String, Object&gt;&gt;() {});</span>
+
+                    // Parse the date string and format it
+<span class="nc" id="L148">                    String dateString = (String) logEntry.get(&quot;date&quot;);</span>
+<span class="nc" id="L149">                    LocalDateTime parsedDate = LocalDateTime.parse(dateString, formatter);</span>
+
+                    // Replace the date string with the parsed LocalDateTime object
+<span class="nc" id="L152">                    logEntry.put(&quot;date&quot;, parsedDate);</span>
+
+<span class="nc" id="L154">                    logEntries.add(logEntry);</span>
+<span class="nc" id="L155">                } catch (DateTimeParseException e) {</span>
+<span class="nc" id="L156">                    System.err.println(&quot;Invalid date format in log entry: &quot; + line);</span>
+<span class="nc" id="L157">                } catch (JsonProcessingException e) {</span>
+<span class="nc" id="L158">                    System.err.println(&quot;Failed to parse log entry: &quot; + line);</span>
+<span class="nc" id="L159">                }</span>
+            }
+<span class="nc" id="L161">        } catch (IOException e) {</span>
+<span class="nc" id="L162">            throw new IOException(&quot;Failed to read log file.&quot;, e);</span>
+<span class="nc" id="L163">        }</span>
+
+        // Sort by date in descending order (most recent first)
+<span class="nc" id="L166">        logEntries.sort((a, b) -&gt; {</span>
+<span class="nc" id="L167">            LocalDateTime dateA = (LocalDateTime) a.get(&quot;date&quot;);</span>
+<span class="nc" id="L168">            LocalDateTime dateB = (LocalDateTime) b.get(&quot;date&quot;);</span>
+<span class="nc" id="L169">            return dateB.compareTo(dateA);</span>
+        });
+
+<span class="nc" id="L172">        return logEntries.stream().limit(50).collect(Collectors.toList());</span>
+    }
+
+
+    @Transactional
+    public Integer deleteFile(Integer id) throws IOException {
+<span class="nc" id="L178">        Optional&lt;FileStorage&gt; optionalFileStorage = fileRepository.getFileStorageByFileId(id);</span>
+
+<span class="nc bnc" id="L180" title="All 2 branches missed.">        if (optionalFileStorage.isEmpty()) {</span>
+<span class="nc" id="L181">            throw new ValidationException(&quot;File id is not exists&quot;);</span>
+        }
+<span class="nc" id="L183">        User user = (User) SecurityContextHolder.getContext().getAuthentication().getPrincipal();</span>
+<span class="nc" id="L184">        Integer user_id = user.getId();</span>
+
+<span class="nc" id="L186">        FileStorage fileStorage = optionalFileStorage.get();</span>
+
+<span class="nc bnc" id="L188" title="All 4 branches missed.">        if (!fileStorage.getOwner().getId().equals(user_id) &amp;&amp; user.getRole().equals(&quot;ROLE_USER&quot;)) {</span>
+<span class="nc" id="L189">            throw new ValidationException(&quot;You are not the owner of the file so you can not delete this scroll&quot;);</span>
+        }
+
+<span class="nc" id="L192">        s3Service.deleteFile(fileStorage.getTitle());</span>
+<span class="nc" id="L193">        fileRepository.delete(fileStorage);</span>
+
+<span class="nc" id="L195">        String message =  &quot; deleted file titled: &quot; + fileStorage.getTitle();</span>
+<span class="nc" id="L196">        logAction(user.getUsername(), message);</span>
+
+<span class="nc" id="L198">        return id;</span>
+    }
+
+
+    public List&lt;FileResponse&gt; getScrolls() {
+<span class="nc" id="L203">        List&lt;FileResponse&gt; response = new ArrayList&lt;&gt;();</span>
+
+<span class="nc" id="L205">        List&lt;FileStorage&gt; scrollsList = fileRepository.findAll();</span>
+<span class="nc bnc" id="L206" title="All 2 branches missed.">        for (FileStorage fileStorage: scrollsList) {</span>
+<span class="nc" id="L207">            FileResponse scrollResponse = FileResponse.builder()</span>
+<span class="nc" id="L208">                    .fileId(fileStorage.getFileId())</span>
+<span class="nc" id="L209">                    .title(fileStorage.getTitle())</span>
+<span class="nc" id="L210">                    .filePath(fileStorage.getFilePath())</span>
+<span class="nc" id="L211">                    .fileSize(fileStorage.getFileSize())</span>
+<span class="nc" id="L212">                    .fileType(fileStorage.getFileType())</span>
+<span class="nc" id="L213">                    .uploadDate(fileStorage.getUploadDate())</span>
+<span class="nc" id="L214">                    .downloadAmount(fileStorage.getDownloadAmount())</span>
+<span class="nc" id="L215">                    .build();</span>
+<span class="nc" id="L216">            User owner = fileStorage.getOwner();</span>
+<span class="nc" id="L217">            UserResponse userResponse = UserResponse.builder()</span>
+<span class="nc" id="L218">                    .id(owner.getId())</span>
+<span class="nc" id="L219">                    .firstName(owner.getFirstName())</span>
+<span class="nc" id="L220">                    .lastName(owner.getLastName())</span>
+<span class="nc" id="L221">                    .email(owner.getEmail())</span>
+<span class="nc" id="L222">                    .username(owner.getUsername())</span>
+<span class="nc" id="L223">                    .phone(owner.getPhone())</span>
+<span class="nc" id="L224">                    .role(owner.getRole())</span>
+<span class="nc" id="L225">                    .build();</span>
+
+<span class="nc" id="L227">            scrollResponse.setOwner(userResponse);</span>
+<span class="nc" id="L228">            response.add(scrollResponse);</span>
+<span class="nc" id="L229">        }</span>
+<span class="nc" id="L230">        return response;</span>
+    }
+
+    public List&lt;FileResponse&gt; getSearchFilter(String title, String fileType, String ownerUsername, Integer fileId,
+                                           Timestamp fromDate, Timestamp toDate) {
+<span class="nc" id="L235">        List&lt;FileResponse&gt; response = new ArrayList&lt;&gt;();</span>
+<span class="nc" id="L236">        Optional&lt;User&gt; user = userRepository.findByUsername(ownerUsername);</span>
+<span class="nc bnc" id="L237" title="All 4 branches missed.">        if (user.isEmpty() &amp;&amp; ownerUsername != null) {</span>
+<span class="nc" id="L238">            return response;</span>
+        }
+<span class="nc" id="L240">        Integer user_id = null;</span>
+<span class="nc bnc" id="L241" title="All 2 branches missed.">        if (ownerUsername != null){</span>
+<span class="nc" id="L242">            user_id = user.get().getId();</span>
+        }
+<span class="nc" id="L244">        List&lt;FileStorage&gt; scrollsList = fileRepository.filterbyField(title, fileType, user_id, fileId, fromDate, toDate);</span>
+<span class="nc" id="L245">        System.out.println(scrollsList.size() + &quot; &quot;+ title);</span>
+<span class="nc bnc" id="L246" title="All 2 branches missed.">        for (FileStorage fileStorage: scrollsList) {</span>
+<span class="nc" id="L247">            FileResponse scrollResponse = makeFileResponse(fileStorage);</span>
+
+<span class="nc" id="L249">            User owner = fileStorage.getOwner();</span>
+<span class="nc" id="L250">            UserResponse userResponse = UserResponse.builder()</span>
+<span class="nc" id="L251">                    .id(owner.getId())</span>
+<span class="nc" id="L252">                    .firstName(owner.getFirstName())</span>
+<span class="nc" id="L253">                    .lastName(owner.getLastName())</span>
+<span class="nc" id="L254">                    .email(owner.getEmail())</span>
+<span class="nc" id="L255">                    .username(owner.getUsername())</span>
+<span class="nc" id="L256">                    .phone(owner.getPhone())</span>
+<span class="nc" id="L257">                    .role(owner.getRole())</span>
+<span class="nc" id="L258">                    .build();</span>
+
+<span class="nc" id="L260">            scrollResponse.setOwner(userResponse);</span>
+<span class="nc" id="L261">            response.add(scrollResponse);</span>
+<span class="nc" id="L262">        }</span>
+<span class="nc" id="L263">        return response;</span>
+    }
+
+
+    public String download(Integer id) {
+<span class="nc" id="L268">        Optional&lt;FileStorage&gt; file = fileRepository.getFileStorageByFileId(id);</span>
+
+<span class="nc bnc" id="L270" title="All 2 branches missed.">        if (file.isEmpty()) {</span>
+<span class="nc" id="L271">            throw new ValidationException(&quot;File id &quot; + id + &quot; is not exist&quot;);</span>
+        }
+
+<span class="nc" id="L274">        FileStorage fileStorage = file.get();</span>
+<span class="nc" id="L275">        fileStorage.increaseDownload();</span>
+<span class="nc" id="L276">        fileRepository.save(fileStorage);</span>
+
+<span class="nc" id="L278">        User user = (User) SecurityContextHolder.getContext().getAuthentication().getPrincipal();</span>
+<span class="nc" id="L279">        user.setDownloadNumber(user.getDownloadNumber() + 1);</span>
+<span class="nc" id="L280">        userRepository.save(user);</span>
+
+<span class="nc" id="L282">        return fileStorage.getFilePath();</span>
+    }
+
+    @Transactional
+    public FileResponse update(FileRequest request) throws IOException {
+<span class="nc" id="L287">        FileStorage fileStorage = fileRepository.getFileStorageByFileId(request.getId())</span>
+<span class="nc" id="L288">                .orElseThrow(() -&gt; new ValidationException(&quot;File id &quot; + request.getId() + &quot; is not exist&quot;));</span>
+
+<span class="nc" id="L290">        Optional&lt;FileStorage&gt; checkTitle = fileRepository.getFileStorageByTitle(request.getTitle());</span>
+
+<span class="nc bnc" id="L292" title="All 4 branches missed.">        if (checkTitle.isPresent() &amp;&amp; !Objects.equals(checkTitle.get(), fileStorage)) {</span>
+<span class="nc" id="L293">            throw new ValidationException(&quot;File title is exists&quot;);</span>
+        }
+
+<span class="nc" id="L296">        fileStorage.setTitle(request.getTitle());</span>
+<span class="nc" id="L297">        fileStorage.setTimer(request.getTimer());</span>
+
+<span class="nc" id="L299">        String filePath = s3Service.uploadFile(request.getFile());</span>
+<span class="nc" id="L300">        fileStorage.setFilePath(filePath);</span>
+//        fileStorage.increaseUpload();
+
+<span class="nc" id="L303">        User user = (User) SecurityContextHolder.getContext().getAuthentication().getPrincipal();</span>
+<span class="nc" id="L304">        String message = &quot; updated file titled: &quot; + request.getTitle();</span>
+<span class="nc" id="L305">        logAction(user.getUsername(), message);</span>
+
+<span class="nc" id="L307">        fileRepository.save(fileStorage);</span>
+
+<span class="nc" id="L309">        return makeFileResponse(fileStorage);</span>
+    }
+
+    @Transactional
+    public String updateTime(Timer request) {
+<span class="nc" id="L314">        Setting setting = new Setting();</span>
+<span class="nc" id="L315">        setting.setTimer(request.getTimer());</span>
+<span class="nc" id="L316">        settingRepo.truncateSettingTable();</span>
+<span class="nc" id="L317">        settingRepo.save(setting);</span>
+<span class="nc" id="L318">        updateTimeForAllScrolls(request.getTimer());</span>
+<span class="nc" id="L319">        return &quot;SUCESS&quot;;</span>
+    }
+
+    @Transactional
+    public void updateTimeForAllScrolls(Integer time) {
+<span class="nc" id="L324">        fileRepository.updateScrollTimerForAll(time);</span>
+<span class="nc" id="L325">    }</span>
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.8.202204050719</span></div></body></html>

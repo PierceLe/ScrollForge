@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>UserController.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">app</a> &gt; <a href="index.source.html" class="el_package">org.scrollSystem.controller</a> &gt; <span class="el_source">UserController.java</span></div><h1>UserController.java</h1><pre class="source lang-java linenums">package org.scrollSystem.controller;
+
+import jakarta.validation.constraints.NotNull;
+import lombok.RequiredArgsConstructor;
+import org.scrollSystem.models.User;
+import org.scrollSystem.response.DefaultListResponse;
+import org.scrollSystem.response.DefaultResponse;
+import org.scrollSystem.response.UserResponse;
+import org.scrollSystem.service.UserService;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.web.bind.annotation.*;
+
+import javax.annotation.Nullable;
+
+@RestController
+@RequestMapping(&quot;/api/v1/users&quot;)
+@RequiredArgsConstructor
+public class UserController {
+    private final UserService userService;
+
+
+    // API FOR USER MANAGEMENT
+    @GetMapping(&quot;&quot;)
+    @PreAuthorize(&quot;hasRole('ROLE_ADMIN')&quot;)
+    public ResponseEntity&lt;DefaultListResponse&lt;UserResponse&gt;&gt; getUsers(
+            @RequestParam @Nullable String email,
+            @RequestParam @Nullable String username
+    ) {
+<span class="nc" id="L31">        return DefaultListResponse.success(userService.getUsers(email, username));</span>
+    }
+
+    // API for delete user
+    @DeleteMapping(&quot;/{usernamme}&quot;)
+    @PreAuthorize(&quot;hasRole('ROLE_ADMIN')&quot;)
+    public ResponseEntity&lt;DefaultResponse&lt;String&gt;&gt; deleteUser (
+            @PathVariable @NotNull String usernamme
+    ) {
+        try {
+<span class="nc" id="L41">            String response = userService.delete(usernamme);</span>
+<span class="nc" id="L42">            return DefaultResponse.success(response);</span>
+        }
+<span class="nc" id="L44">        catch (Exception e) {</span>
+<span class="nc" id="L45">            return DefaultResponse.error(e.getMessage());</span>
+        }
+    }
+
+    // APi for get info of user from JWT
+    @GetMapping(&quot;/info&quot;)
+    public ResponseEntity&lt;DefaultResponse&lt;UserResponse&gt;&gt; register(
+    ) {
+<span class="nc" id="L53">        return DefaultResponse.success(userService.getInfo());</span>
+    }
+
+    // API for checking exist username or not
+    @GetMapping(&quot;/check-username&quot;)
+    public ResponseEntity&lt;DefaultResponse&lt;String&gt;&gt; checkExistingUsername(
+            @RequestParam String username
+    ) {
+        try {
+<span class="nc" id="L62">            String response = userService.checkExistingUsername(username);</span>
+<span class="nc" id="L63">            return DefaultResponse.success(response);</span>
+        }
+<span class="nc" id="L65">        catch (Exception e) {</span>
+<span class="nc" id="L66">            return DefaultResponse.error(e.getMessage());</span>
+        }
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.8.202204050719</span></div></body></html>
